@@ -1,31 +1,32 @@
-<?xml version="1.0" encoding="utf-8"?>
-
 <resources>
-
     <string name="app_name">TraceAR</string>
-
-    <string name="scan_surface">
-        حرّك الهاتف ببطء لاكتشاف السطح
-    </string>
-
-    <string name="choose_image">
-        اختيار صورة
-    </string>
-
-    <string name="lock_artwork">
-        تثبيت
-    </string>
-
-    <string name="unlock_artwork">
-        فتح
-    </string>
-
-    <string name="reset_artwork">
-        إعادة
-    </string>
-
-    <string name="opacity">
-        الشفافية
-    </string>
-
+    <string name="scan_surface">Move slowly to detect a surface</string>
+    <string name="choose_image">Choose image</string>
+    <string name="lock_artwork">Lock</string>
+    <string name="unlock_artwork">Unlock</string>
+    <string name="reset_artwork">Reset</string>
+    <string name="opacity">Opacity</string>
+    <string name="ready">Surface detected · tap to place</string>
+    <string name="selected">Image ready · tap a detected surface</string>
+    <string name="placed">Placed · drag, pinch or rotate</string>
+    <string name="locked">Locked · move your phone to trace</string>
+    <string name="lost">Tracking lost · return slowly to the surface</string>
+    <string name="hide">Hide</string>
+    <string name="show">Show</string>
+    <string name="precision">Precision</string>
+    <string name="gray">Grayscale</string>
+    <string name="line">Line art</string>
+    <string name="original">Original</string>
+    <string name="contrast">Contrast</string>
+    <string name="retry">Retry</string>
+    <string name="permission">Camera access is required. Allow it in app settings if previously denied.</string>
+    <string name="unsupported">This device does not support ARCore world tracking. TraceAR cannot anchor drawings here.</string>
+    <string name="install">Install or update Google Play Services for AR, then retry.</string>
+    <string name="image_error">Unable to open image. Choose another file.</string>
+    <string name="loading">Preparing image locally…</string>
+    <string name="error">AR error</string>
+    <string name="hint">Use a well-lit textured surface. Avoid reflective or blank surfaces. Anchors last for this session only.</string>
+    <string name="depth">Depth assisted</string>
+    <string name="planes">Plane detection</string>
+    <string name="no_hit">No surface at this point. Keep scanning.</string>
 </resources>
