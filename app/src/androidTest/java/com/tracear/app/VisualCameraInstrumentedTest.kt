@@ -11,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.*
+import org.junit.Assert.*
 import org.junit.runner.RunWith
 
 /** Emulator camera smoke test; does not measure tracking accuracy on real hardware. */
@@ -23,7 +24,7 @@ class VisualCameraInstrumentedTest {
         val preferences=context.getSharedPreferences("MainActivity",Context.MODE_PRIVATE)
         preferences.edit().putInt("tracking_mode",2).commit()
         try{
-            ActivityScenario.launch(MainActivity::class.java).use{scenario->
+            ActivityScenario.launch<MainActivity>(MainActivity::class.java).use{scenario->
                 fun waitFor(predicate:(MainActivity,List<TextView>)->Boolean):Boolean {
                     repeat(100){var found=false;scenario.onActivity{a->found=predicate(a,texts(a.window.decorView))};if(found)return true;Thread.sleep(100)};return false
                 }
