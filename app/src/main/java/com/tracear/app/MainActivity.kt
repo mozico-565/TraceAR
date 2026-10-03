@@ -45,6 +45,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     @Volatile private var opacity=.65f
     @Volatile private var displayRotation=0
     private var installRequested=false
+    private var cameraRequested=false
     private val scene=GlScene()
     private var anchor:Anchor?=null
     private var plane:Plane?=null
@@ -60,7 +61,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private val touches=ConcurrentLinkedQueue<Touch>()
     private val worker=Executors.newSingleThreadExecutor()
     private val generation=AtomicInteger()
-    private var original:Bitmap?=null
+    @Volatile private var original:Bitmap?=null
     private var mode=0
     private var contrast=1f
     private var lastX=0f;private var lastY=0f;private var moved=false
@@ -121,7 +122,11 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     override fun onResume(){super.onResume();resumed=true;displayRotation=windowManager.defaultDisplay.rotation;startAr()}
     private fun startAr() {
         if(!resumed || sessionRunning) return
-        if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){permission.launch(Manifest.permission.CAMERA);return}
+        if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
+            if(!cameraRequested){cameraRequested=true;permission.launch(Manifest.permission.CAMERA)}
+            else {message(getString(R.string.permission));retryButton.visibility=View.VISIBLE}
+            return
+        }
         try {
             val availability=ArCoreApk.getInstance().checkAvailability(this)
             if(availability.isTransient){surface.postDelayed({if(resumed)startAr()},400);return}
@@ -196,7 +201,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
             MotionEvent.ACTION_DOWN->{lastX=e.x;lastY=e.y;moved=false;multi=false}
             MotionEvent.ACTION_POINTER_DOWN->{multi=true;if(e.pointerCount>=2){previousDistance=distance(e);previousAngle=rotation(e)}}
             MotionEvent.ACTION_MOVE->{
-                if(e.pointerCount>=2){val d=distance(e);val a=rotation(e);val ratio=if(previousDistance>0)d/previousDistance else 1f;val delta=SurfaceMath.rotationDelta(a,previousAngle);previousDistance=d;previousAngle=a;commands.add{if(!locked){width=(width*ratio).coerceIn(.02f,3f);angle+=delta}}}
+                if(e.pointerCount>=2){val d=distance(e);val a=rotation(e);val ratio=if(previousDistance>0)d/previousDistance else 1f;val delta=SurfaceMath.rotationDelta(a,previousAngle);previousDistance=d;previousAngle=a;commands.add{if(!locked){width=(width*ratio).coerceIn(min(.02f,.02f*aspect),min(3f,3f*aspect));angle+=delta}}}
                 else if(!multi && hypot(e.x-lastX,e.y-lastY)>dp(8)){moved=true;touches.clear();touches.add(Touch(e.x,e.y,true))}
             }
             MotionEvent.ACTION_UP->{if(!moved&&!multi)touches.add(Touch(e.x,e.y,false))}

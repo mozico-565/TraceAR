@@ -12,6 +12,7 @@ object ImageProcessing {
             val scale=min(1.0,1536.0/max(info.size.width,info.size.height))
             decoder.setTargetSize(max(1,(info.size.width*scale).toInt()),max(1,(info.size.height*scale).toInt()))
             decoder.allocator=ImageDecoder.ALLOCATOR_SOFTWARE
+            decoder.setTargetColorSpace(ColorSpace.get(ColorSpace.Named.SRGB))
         }
     }
     fun filter(source:Bitmap,mode:Int,contrast:Float):Bitmap {
