@@ -31,6 +31,10 @@ import javax.microedition.khronos.opengles.GL10
 import kotlin.math.*
 
 class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
+    private lateinit var cameraHost:FrameLayout
+    private var engine:TrackingEngine?=null
+    private var trackingMode=0
+    private var rendered:Bitmap?=null
     private lateinit var surface:GLSurfaceView
     private lateinit var status:TextView
     private lateinit var lockButton:MaterialButton
@@ -38,7 +42,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private lateinit var retryButton:MaterialButton
     @Volatile private var session:Session?=null
     @Volatile private var resumed=false
-    private var sessionRunning=false
+    @Volatile private var sessionRunning=false
     @Volatile private var fatal=false
     @Volatile private var locked=false
     @Volatile private var hidden=false
@@ -47,7 +51,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private var installRequested=false
     private var cameraRequested=false
     private val scene=GlScene()
-    private var anchor:Anchor?=null
+    @Volatile private var anchor:Anchor?=null
     private var plane:Plane?=null
     private var localPose=Pose.IDENTITY
     private var width=.25f
@@ -80,16 +84,20 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
             setRenderer(this@MainActivity)
             setOnTouchListener{_,event -> handleTouch(event);true}
         }
-        root.addView(surface,FrameLayout.LayoutParams(-1,-1))
+        cameraHost=FrameLayout(this)
+        cameraHost.addView(surface,FrameLayout.LayoutParams(-1,-1))
+        root.addView(cameraHost,FrameLayout.LayoutParams(-1,-1))
+        trackingMode=getPreferences(MODE_PRIVATE).getInt("tracking_mode",0)
         val top=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(18),dp(20),dp(12));background=rounded(0xD9101C22.toInt())}
         top.addView(TextView(this).apply{text="TraceAR";textSize=25f;setTextColor(0xFF55E3BF.toInt())})
         status=TextView(this).apply{textSize=15f;setTextColor(Color.WHITE);text=getString(R.string.scan_surface)}
         top.addView(status)
+        top.addView(button(R.string.tracking_mode){trackingDialog()})
         retryButton=button(R.string.retry){
             if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED) {
                 if(shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) permission.launch(Manifest.permission.CAMERA)
                 else startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:$packageName")))
-            } else { surface.onPause();try{session?.pause()}catch(e:Exception){Log.e("TraceAR","Retry pause failed",e)};sessionRunning=false;fatal=false;startAr() }
+            } else { engine?.pause();fatal=false;startAr() }
         }.apply{visibility=View.GONE}
         top.addView(retryButton)
         root.addView(top,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
@@ -97,18 +105,16 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
         val row=LinearLayout(this)
         row.addView(button(R.string.choose_image){picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))},LinearLayout.LayoutParams(0,-2,1f))
         lockButton=button(R.string.lock_artwork){
-            commands.add {
-                if(anchor!=null) {locked=!locked;runOnUiThread{lockButton.setText(if(locked)R.string.unlock_artwork else R.string.lock_artwork)}}
-            }
+            if(engine?.hasSurface==true){locked=!locked;lockButton.setText(if(locked)R.string.unlock_artwork else R.string.lock_artwork);syncAppearance()}
         }
         row.addView(lockButton,LinearLayout.LayoutParams(0,-2,1f));bottom.addView(row)
         val second=LinearLayout(this)
-        hideButton=button(R.string.hide){hidden=!hidden;hideButton.setText(if(hidden)R.string.show else R.string.hide)}
+        hideButton=button(R.string.hide){hidden=!hidden;hideButton.setText(if(hidden)R.string.show else R.string.hide);syncAppearance()}
         second.addView(hideButton,LinearLayout.LayoutParams(0,-2,1f))
-        second.addView(button(R.string.reset_artwork){commands.add{touches.clear();anchor?.detach();anchor=null;plane=null;localPose=Pose.IDENTITY;width=.25f;angle=0f;locked=false;hidden=false;runOnUiThread{lockButton.setText(R.string.lock_artwork);hideButton.setText(R.string.hide)}}},LinearLayout.LayoutParams(0,-2,1f))
+        second.addView(button(R.string.reset_artwork){engine?.reset();locked=false;hidden=false;lockButton.setText(R.string.lock_artwork);hideButton.setText(R.string.hide);syncAppearance()},LinearLayout.LayoutParams(0,-2,1f))
         second.addView(button(R.string.precision){precisionDialog()},LinearLayout.LayoutParams(0,-2,1f));bottom.addView(second)
         bottom.addView(TextView(this).apply{text=getString(R.string.opacity);setTextColor(Color.WHITE);textSize=13f})
-        bottom.addView(Slider(this).apply{valueFrom=.05f;valueTo=1f;value=.65f;addOnChangeListener{_,v,_->opacity=v}},LinearLayout.LayoutParams(-1,dp(38)))
+        bottom.addView(Slider(this).apply{valueFrom=.05f;valueTo=1f;value=.65f;addOnChangeListener{_,v,_->opacity=v;syncAppearance()}},LinearLayout.LayoutParams(-1,dp(38)))
         bottom.addView(TextView(this).apply{text=getString(R.string.hint);setTextColor(0xFFB8C6CD.toInt());textSize=11f})
         root.addView(bottom,FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
         ViewCompat.setOnApplyWindowInsetsListener(root){v,insets -> val i=insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout());v.setPadding(i.left,i.top,i.right,i.bottom);insets}
@@ -120,7 +126,45 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private fun message(text:String){runOnUiThread{if(!isDestroyed){status.text=text}}}
     private fun fail(e:Exception){Log.e("TraceAR","AR failed",e);fatal=true;message("${getString(R.string.error)}: ${e.javaClass.simpleName} — ${e.message ?: ""}");runOnUiThread{retryButton.visibility=View.VISIBLE}}
     override fun onResume(){super.onResume();resumed=true;displayRotation=windowManager.defaultDisplay.rotation;startAr()}
+    private fun syncAppearance(){engine?.appearance(locked,hidden,opacity)}
+    private fun trackingDialog(){
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle(R.string.tracking_mode)
+            .setSingleChoiceItems(arrayOf(getString(R.string.auto_mode),"ARCore",getString(R.string.visual_mode)),trackingMode){dialog,which->
+                trackingMode=which;getPreferences(MODE_PRIVATE).edit().putInt("tracking_mode",which).apply()
+                engine?.close();engine=null;locked=false;lockButton.setText(R.string.lock_artwork)
+                dialog.dismiss();fatal=false;startAr()
+            }.setNegativeButton(android.R.string.cancel,null).show()
+    }
+    private fun activateVisual(){
+        if(engine !is VisualTrackingEngine){
+            engine?.close();surface.onPause();sessionRunning=false
+            surface.visibility=View.GONE
+            try{engine=VisualTrackingEngine(this,cameraHost){message(it)};rendered?.let{engine?.artwork(it)};syncAppearance()}
+            catch(e:Exception){Log.e("TraceAR","Visual initialization failed",e);message(getString(R.string.visual_error)+": "+e.message);return}
+        }
+        engine?.start()
+    }
     private fun startAr() {
+        if(!resumed)return
+        if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
+            if(!cameraRequested){cameraRequested=true;permission.launch(Manifest.permission.CAMERA)}
+            else {message(getString(R.string.permission));retryButton.visibility=View.VISIBLE};return
+        }
+        if(trackingMode==2){activateVisual();return}
+        val availability=ArCoreApk.getInstance().checkAvailability(this)
+        if(availability.isTransient){surface.postDelayed({if(resumed)startAr()},400);return}
+        if(!availability.isSupported){activateVisual();if(trackingMode==1)message(getString(R.string.unsupported));return}
+        if(engine !is ArCoreTrackingEngine){
+            engine?.close();surface.visibility=View.VISIBLE
+            engine=ArCoreTrackingEngine({anchor!=null},{startArCore()},{pauseArCore()},
+                {commands.add{touches.clear();anchor?.detach();anchor=null;plane=null;localPose=Pose.IDENTITY;width=.25f;angle=0f}},
+                {bitmap->commands.add{scene.upload(bitmap);aspect=bitmap.width.toFloat()/bitmap.height;width=min(.25f,.4f*aspect);selected=true}})
+            rendered?.let{engine?.artwork(it)}
+        }
+        engine?.start()
+    }
+    private fun pauseArCore(){sessionRunning=false;surface.onPause();try{session?.pause()}catch(e:Exception){Log.e("TraceAR","Pause failed",e)}}
+    private fun startArCore() {
         if(!resumed || sessionRunning) return
         if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){
             if(!cameraRequested){cameraRequested=true;permission.launch(Manifest.permission.CAMERA)}
@@ -145,14 +189,14 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
             session!!.resume();sessionRunning=true;surface.onResume();retryButton.visibility=View.GONE
         } catch(e:Exception){fail(e)}
     }
-    override fun onPause(){resumed=false;sessionRunning=false;surface.onPause();try{session?.pause()}catch(e:Exception){Log.e("TraceAR","Pause failed",e)};super.onPause()}
-    override fun onDestroy(){worker.shutdownNow();session?.close();session=null;super.onDestroy()}
+    override fun onPause(){resumed=false;engine?.pause();super.onPause()}
+    override fun onDestroy(){engine?.close();worker.shutdownNow();session?.close();session=null;super.onDestroy()}
     override fun onSurfaceCreated(gl:GL10?,config:EGLConfig?){try{scene.init()}catch(e:Exception){fail(e)}}
     override fun onSurfaceChanged(gl:GL10?,w:Int,h:Int){viewportWidth=w;viewportHeight=h;GLES20.glViewport(0,0,w,h)}
     override fun onDrawFrame(gl:GL10?) {
         GLES20.glClearColor(.04f,.07f,.09f,1f);GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
         val s=session ?: return
-        if(!resumed || fatal)return
+        if(!resumed || fatal || !sessionRunning)return
         try {
             while(true){val command=commands.poll()?:break;command()}
             s.setDisplayGeometry(displayRotation,viewportWidth,viewportHeight)
@@ -212,7 +256,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private fun rotation(e:MotionEvent)=Math.toDegrees(atan2((e.getY(1)-e.getY(0)).toDouble(),(e.getX(1)-e.getX(0)).toDouble())).toFloat()
     private fun loadImage(uri:Uri) {
         val token=generation.incrementAndGet();message(getString(R.string.loading))
-        worker.execute {try{val bitmap=ImageProcessing.decode(contentResolver,uri);if(token==generation.get()&&!isDestroyed){original=bitmap;mode=0;contrast=1f;commands.add{scene.upload(bitmap);aspect=bitmap.width.toFloat()/bitmap.height;width=min(.25f,.4f*aspect);selected=true}}}catch(e:Exception){Log.e("TraceAR","Image decode failed",e);message(getString(R.string.image_error))}}
+        worker.execute {try{val bitmap=ImageProcessing.decode(contentResolver,uri);if(token==generation.get()&&!isDestroyed){original=bitmap;runOnUiThread{mode=0;contrast=1f;rendered=bitmap;engine?.artwork(bitmap)}}}catch(e:Exception){Log.e("TraceAR","Image decode failed",e);message(getString(R.string.image_error))}}
     }
     private fun precisionDialog() {
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8))}
@@ -224,5 +268,5 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
         box.addView(Slider(this).apply{valueFrom=.5f;valueTo=3f;value=contrast;addOnChangeListener{_,v,_->contrast=v};addOnSliderTouchListener(object:Slider.OnSliderTouchListener{override fun onStartTrackingTouch(slider:Slider){};override fun onStopTrackingTouch(slider:Slider){process()}})})
         com.google.android.material.dialog.MaterialAlertDialogBuilder(this).setTitle(R.string.precision).setView(box).setPositiveButton(android.R.string.ok,null).show()
     }
-    private fun process(){val source=original?:return;val m=mode;val c=contrast;val token=generation.incrementAndGet();worker.execute{try{val result=ImageProcessing.filter(source,m,c);if(token==generation.get()&&!isDestroyed)commands.add{scene.upload(result)}}catch(e:Exception){Log.e("TraceAR","Filter failed",e);message(getString(R.string.image_error))}}}
+    private fun process(){val source=original?:return;val m=mode;val c=contrast;val token=generation.incrementAndGet();worker.execute{try{val result=ImageProcessing.filter(source,m,c);if(token==generation.get()&&!isDestroyed)runOnUiThread{rendered=result;engine?.artwork(result)}}catch(e:Exception){Log.e("TraceAR","Filter failed",e);message(getString(R.string.image_error))}}}
 }

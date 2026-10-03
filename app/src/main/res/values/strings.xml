@@ -20,7 +20,7 @@
     <string name="contrast">Contrast</string>
     <string name="retry">Retry</string>
     <string name="permission">Camera access is required. Allow it in app settings if previously denied.</string>
-    <string name="unsupported">This device does not support ARCore world tracking. TraceAR cannot anchor drawings here.</string>
+    <string name="unsupported">ARCore unavailable · switched to visual surface tracking.</string>
     <string name="install">Install or update Google Play Services for AR, then retry.</string>
     <string name="image_error">Unable to open image. Choose another file.</string>
     <string name="loading">Preparing image locally…</string>
@@ -29,4 +29,15 @@
     <string name="depth">Depth assisted</string>
     <string name="planes">Plane detection</string>
     <string name="no_hit">No surface at this point. Keep scanning.</string>
+    <string name="tracking_mode">Tracking mode</string>
+    <string name="auto_mode">Auto (ARCore when available)</string>
+    <string name="visual_mode">Visual surface tracking</string>
+    <string name="select_surface">Visual mode · drag the four corners around a flat surface, then track. Include visible details around blank paper.</string>
+    <string name="track_surface">Track surface</string>
+    <string name="auto_surface">Find rectangle</string>
+    <string name="reselect_surface">Reselect surface</string>
+    <string name="visual_lost">Surface lost · point the camera at it again. Add visible details or reselect if needed.</string>
+    <string name="visual_tracking">Visual tracking · drag, pinch or rotate artwork</string>
+    <string name="visual_error">Visual camera or tracking error · retry or switch tracking mode</string>
+    <string name="no_rectangle">No clear rectangle found · adjust the corners manually</string>
 </resources>

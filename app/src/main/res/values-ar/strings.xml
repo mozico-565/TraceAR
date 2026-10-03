@@ -20,7 +20,7 @@
     <string name="contrast">التباين</string>
     <string name="retry">إعادة المحاولة</string>
     <string name="permission">يلزم إذن الكاميرا. فعّله من إعدادات التطبيق إذا رُفض سابقًا.</string>
-    <string name="unsupported">هذا الجهاز لا يدعم تتبع ARCore المكاني. لا يمكن تثبيت الرسمة عليه.</string>
+    <string name="unsupported">ARCore غير متاح · انتقلنا إلى التتبع البصري للسطح.</string>
     <string name="install">ثبّت أو حدّث خدمات Google Play للواقع المعزز ثم أعد المحاولة.</string>
     <string name="image_error">تعذّر فتح الصورة. اختر ملفًا آخر.</string>
     <string name="loading">تجهيز الصورة محليًا…</string>
@@ -29,4 +29,15 @@
     <string name="depth">مدعوم بالعمق</string>
     <string name="planes">اكتشاف الأسطح</string>
     <string name="no_hit">لا يوجد سطح هنا. استمر في الفحص.</string>
+    <string name="tracking_mode">وضع التتبع</string>
+    <string name="auto_mode">تلقائي (ARCore عند توفره)</string>
+    <string name="visual_mode">تتبع السطح بصريًا</string>
+    <string name="select_surface">الوضع البصري · اضبط الزوايا الأربع حول سطح مستوٍ ثم ابدأ التتبع. ضمّن تفاصيل مرئية حول الورق الأبيض.</string>
+    <string name="track_surface">تتبع السطح</string>
+    <string name="auto_surface">اكتشاف مستطيل</string>
+    <string name="reselect_surface">إعادة تحديد السطح</string>
+    <string name="visual_lost">فقدنا السطح، وجّه الكاميرا إليه مجددًا. أضف تفاصيل مرئية أو أعد تحديد السطح عند الحاجة.</string>
+    <string name="visual_tracking">تتبع بصري · اسحب الرسمة أو كبّرها أو دوّرها</string>
+    <string name="visual_error">خطأ في الكاميرا أو التتبع البصري · أعد المحاولة أو غيّر وضع التتبع</string>
+    <string name="no_rectangle">لم نجد مستطيلًا واضحًا · اضبط الزوايا يدويًا</string>
 </resources>
