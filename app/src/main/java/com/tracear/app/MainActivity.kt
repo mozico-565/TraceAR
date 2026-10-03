@@ -158,7 +158,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
             engine?.close();surface.visibility=View.VISIBLE
             engine=ArCoreTrackingEngine({anchor!=null},{startArCore()},{pauseArCore()},
                 {commands.add{touches.clear();anchor?.detach();anchor=null;plane=null;localPose=Pose.IDENTITY;width=.25f;angle=0f}},
-                {bitmap->commands.add{scene.upload(bitmap);aspect=bitmap.width.toFloat()/bitmap.height;width=min(.25f,.4f*aspect);selected=true}})
+                {bitmap,reset->commands.add{scene.upload(bitmap);aspect=bitmap.width.toFloat()/bitmap.height;if(reset)width=min(.25f,.4f*aspect);selected=true}})
             rendered?.let{engine?.artwork(it)}
         }
         engine?.start()
@@ -256,7 +256,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
     private fun rotation(e:MotionEvent)=Math.toDegrees(atan2((e.getY(1)-e.getY(0)).toDouble(),(e.getX(1)-e.getX(0)).toDouble())).toFloat()
     private fun loadImage(uri:Uri) {
         val token=generation.incrementAndGet();message(getString(R.string.loading))
-        worker.execute {try{val bitmap=ImageProcessing.decode(contentResolver,uri);if(token==generation.get()&&!isDestroyed){original=bitmap;runOnUiThread{mode=0;contrast=1f;rendered=bitmap;engine?.artwork(bitmap)}}}catch(e:Exception){Log.e("TraceAR","Image decode failed",e);message(getString(R.string.image_error))}}
+        worker.execute {try{val bitmap=ImageProcessing.decode(contentResolver,uri);if(token==generation.get()&&!isDestroyed){original=bitmap;runOnUiThread{mode=0;contrast=1f;rendered=bitmap;engine?.artwork(bitmap,true)}}}catch(e:Exception){Log.e("TraceAR","Image decode failed",e);message(getString(R.string.image_error))}}
     }
     private fun precisionDialog() {
         val box=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(8))}

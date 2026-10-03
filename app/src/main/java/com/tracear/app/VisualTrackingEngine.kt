@@ -18,6 +18,7 @@ import com.google.android.material.button.MaterialButton
 import org.opencv.android.OpenCVLoader
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.Executors
 import java.util.concurrent.ConcurrentLinkedQueue
 import kotlin.math.*
@@ -26,6 +27,7 @@ import kotlin.math.*
 class VisualTrackingEngine(private val activity:AppCompatActivity,private val host:FrameLayout,private val report:(String)->Unit):TrackingEngine {
     private val nativeReady=try{OpenCVLoader.initLocal().also{check(it){"OpenCV initialization failed"}}}catch(e:LinkageError){throw IllegalStateException("OpenCV native library unavailable",e)}
     private val executor=Executors.newSingleThreadExecutor()
+    private val selectionVersion=AtomicInteger()
     private val pending=ConcurrentLinkedQueue<()->Unit>()
     private val tracker=VisualTracker()
     private val gray=Mat()
@@ -57,7 +59,7 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
     override fun start(){
         if(closed||active)return
         if(!OpenCVLoader.initLocal()){report(activity.getString(R.string.visual_error));return}
-        active=true
+        active=true;lastStatus=""
         preview.post {
             if(!active)return@post
             val future=ProcessCameraProvider.getInstance(activity)
@@ -71,7 +73,7 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
                     analysis=a;a.setAnalyzer(executor){frame->analyze(frame)}
                     val viewport=preview.viewPort?:throw IllegalStateException("Camera viewport not ready")
                     provider!!.bindToLifecycle(activity,CameraSelector.DEFAULT_BACK_CAMERA,UseCaseGroup.Builder().setViewPort(viewport).addUseCase(p).addUseCase(a).build())
-                    report(activity.getString(R.string.select_surface))
+                    report(activity.getString(if(selecting)R.string.select_surface else R.string.visual_lost))
                     target=preview.outputTransform
                 }catch(e:Exception){Log.e("TraceAR","Visual camera start failed",e);active=false;report(activity.getString(R.string.visual_error)+": "+e.message)}
             },ContextCompat.getMainExecutor(activity))
@@ -79,9 +81,9 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
     }
     override fun pause(){active=false;analysis?.clearAnalyzer();provider?.unbindAll();pending.add{tracker.pause()}}
     override fun close(){if(closed)return;pause();closed=true;executor.execute{tracker.close();gray.release()};executor.shutdown();host.removeView(preview);host.removeView(overlay);host.removeView(controls)}
-    override fun artwork(bitmap:Bitmap){overlay.bitmap=bitmap;overlay.invalidate()}
+    override fun artwork(bitmap:Bitmap,resetPlacement:Boolean){overlay.bitmap=bitmap;if(resetPlacement)overlay.resetArtwork();overlay.invalidate()}
     override fun appearance(locked:Boolean,hidden:Boolean,opacity:Float){overlay.locked=locked;overlay.hidden=hidden;overlay.opacity=opacity;overlay.invalidate()}
-    override fun reset(){selecting=true;boundSurface=false;pending.add{tracker.reset()};overlay.quad=null;overlay.tracked=null;overlay.available=false;overlay.resetArtwork();overlay.invalidate();confirm.visibility=View.VISIBLE;auto.visibility=View.VISIBLE;reselect.visibility=View.GONE;report(activity.getString(R.string.select_surface))}
+    override fun reset(){selectionVersion.incrementAndGet();selecting=true;boundSurface=false;pending.add{tracker.reset()};overlay.quad=null;overlay.tracked=null;overlay.available=false;overlay.resetArtwork();overlay.invalidate();confirm.visibility=View.VISIBLE;auto.visibility=View.VISIBLE;reselect.visibility=View.GONE;report(activity.getString(R.string.select_surface))}
     private fun selectSurface(){
         val matrix=mapping?:return
         val inverse=Matrix();if(!matrix.invert(inverse))return
@@ -89,12 +91,14 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
         val corners=overlay.selection().copyOf();inverse.mapPoints(corners)
         val q=DoubleArray(8){corners[it].toDouble()}
         if(!TrackingMath.validQuad(q))return
+        val version=selectionVersion.incrementAndGet()
         selecting=false;confirm.visibility=View.GONE;auto.visibility=View.GONE;reselect.visibility=View.VISIBLE
-        pending.add{tracker.select(gray,q);boundSurface=true}
+        pending.add{if(version==selectionVersion.get()){tracker.select(gray,q);boundSurface=true}}
     }
     private fun analyze(frame:ImageProxy){
         try{
             if(!active||closed)return
+            val version=selectionVersion.get()
             val w=frame.width;val h=frame.height
             if(bytes.size!=w*h)bytes=ByteArray(w*h)
             val plane=frame.planes[0];val buffer=plane.buffer;val origin=buffer.position()
@@ -108,15 +112,15 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
             while(true){val task=pending.poll()?:break;task()}
             if(autoRequested){autoRequested=false;val rectangle=tracker.rectangle(gray)
                 activity.runOnUiThread{if(selecting&&rectangle!=null){val q=FloatArray(8){rectangle[it].toFloat()};matrix.mapPoints(q);overlay.quad=q;overlay.invalidate()}else if(selecting)report(activity.getString(R.string.no_rectangle))}}
-            if(!selecting)publish(tracker.update(gray,SystemClock.elapsedRealtime()),matrix)
+            if(!selecting)publish(tracker.update(gray,SystemClock.elapsedRealtime()),matrix,version)
         }catch(e:Exception){Log.e("TraceAR","Visual analysis failed",e);pending.add{tracker.pause()};activity.runOnUiThread{overlay.available=false;overlay.invalidate();report(activity.getString(R.string.visual_error)+": "+e.javaClass.simpleName)}}
         finally{frame.close()}
     }
-    private fun publish(result:VisualTracker.Result,matrix:Matrix){
+    private fun publish(result:VisualTracker.Result,matrix:Matrix,version:Int){
         val now=SystemClock.elapsedRealtime();if(!result.lost)lastGood=now
         val points=result.corners?.let{FloatArray(8){i->it[i].toFloat()}.also{matrix.mapPoints(it)}}
         activity.runOnUiThread{
-            if(closed||!active||selecting)return@runOnUiThread
+            if(closed||!active||selecting||version!=selectionVersion.get())return@runOnUiThread
             if(points!=null)overlay.tracked=points
             overlay.available=!result.lost||now-lastGood<350;overlay.invalidate()
             val text=activity.getString(if(result.lost)R.string.visual_lost else if(overlay.locked)R.string.locked else R.string.visual_tracking)+(if(result.lost)"" else " · ${result.confidence}%")
@@ -127,6 +131,7 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
         var bitmap:Bitmap?=null;var quad:FloatArray?=null;var tracked:FloatArray?=null
         var locked=false;var hidden=false;var opacity=.65f;var available=false
         private val paint=Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        private val localMatrix=Matrix();private val drawMatrix=Matrix()
         private val planeMatrix=Matrix();private var planeHeight=1f
         private var tx=.5f;private var ty=.5f;private var scale=.8f;private var angle=0f
         private var corner=-1;private var last=FloatArray(2);private var dist=0f;private var rotation=0f;private var multiple=false
@@ -150,8 +155,8 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
             val canonical=floatArrayOf(0f,0f,1f,0f,1f,planeHeight,0f,planeHeight)
             if(!planeMatrix.setPolyToPoly(canonical,0,q,0,4))return
             val iw=scale*min(1f,planeHeight*image.width/image.height);val ih=iw*image.height/image.width
-            val local=Matrix();local.setTranslate(-image.width/2f,-image.height/2f);local.postScale(iw/image.width,ih/image.height);local.postRotate(angle);local.postTranslate(tx,ty*planeHeight)
-            val transform=Matrix();transform.setConcat(planeMatrix,local)
+            val local=localMatrix;local.setTranslate(-image.width/2f,-image.height/2f);local.postScale(iw/image.width,ih/image.height);local.postRotate(angle);local.postTranslate(tx,ty*planeHeight)
+            val transform=drawMatrix;transform.setConcat(planeMatrix,local)
             paint.alpha=(opacity*255).toInt();canvas.drawBitmap(image,transform,paint);paint.alpha=255
         }
         private fun planePoint(x:Float,y:Float):FloatArray?{val inverse=Matrix();if(!planeMatrix.invert(inverse))return null;return floatArrayOf(x,y).also{inverse.mapPoints(it)}}

@@ -11,6 +11,8 @@ import kotlin.math.*
 /** All methods, including close, run on the analysis executor. No camera frames leave the device. */
 class VisualTracker {
     data class Result(val corners:DoubleArray?,val confidence:Int,val lost:Boolean)
+    private val flowP=MatOfPoint2f();private val flowN=MatOfPoint2f();private val flowBack=MatOfPoint2f()
+    private val flowStatus=MatOfByte();private val flowError=MatOfFloat();private val flowReverseStatus=MatOfByte();private val flowReverseError=MatOfFloat()
     private val reference=Mat();private val previous=Mat();private val descriptors=Mat()
     private val orb=ORB.create(500);private val matcher=BFMatcher.create(Core.NORM_HAMMING,false)
     private var refKeys=arrayOf<KeyPoint>()
@@ -50,16 +52,16 @@ class VisualTracker {
     fun update(gray:Mat,now:Long):Result {
         val q=original?:return Result(null,0,false)
         if(!lost && tracked.size>=12){
-            val p=MatOfPoint2f(*tracked);val n=MatOfPoint2f();val back=MatOfPoint2f()
-            val status=MatOfByte();val error=MatOfFloat();val reverseStatus=MatOfByte();val reverseError=MatOfFloat()
-            try {
+            val p=flowP.apply{fromArray(*tracked)};val n=flowN;val back=flowBack
+            val status=flowStatus;val error=flowError;val reverseStatus=flowReverseStatus;val reverseError=flowReverseError
+            run {
                 Video.calcOpticalFlowPyrLK(previous,gray,p,n,status,error,Size(21.0,21.0),3)
                 Video.calcOpticalFlowPyrLK(gray,previous,n,back,reverseStatus,reverseError,Size(21.0,21.0),3)
                 val next=n.toArray();val backwards=back.toArray();val flags=status.toArray();val rev=reverseStatus.toArray();val errors=error.toArray()
                 val good=tracked.indices.filter{flags[it].toInt()!=0&&rev[it].toInt()!=0&&errors[it]<25&&hypot(backwards[it].x-tracked[it].x,backwards[it].y-tracked[it].y)<1.5}
                 val result=estimate(good.map{refs[it]}.toTypedArray(),good.map{next[it]}.toTypedArray(),gray,false)
                 if(result!=null){gray.copyTo(previous);return result}
-            }finally{p.release();n.release();back.release();status.release();error.release();reverseStatus.release();reverseError.release()}
+            }
         }
         lost=true
         if(now-lastSearch>=450){lastSearch=now
@@ -100,5 +102,5 @@ class VisualTracker {
             return Result(smooth!!.copyOf(),(100.0*keep.size/a.size).toInt(),false)
         }finally{src.release();dst.release();mask.release();h.release()}
     }
-    fun close(){reset();orb.clear();matcher.clear()}
+    fun close(){reset();listOf(flowP,flowN,flowBack,flowStatus,flowError,flowReverseStatus,flowReverseError).forEach{it.release()};orb.clear();matcher.clear()}
 }
