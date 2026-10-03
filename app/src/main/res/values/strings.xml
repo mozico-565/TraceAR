@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+
+    <string name="app_name">TraceAR</string>
+
+    <string name="scan_surface">
+        حرّك الهاتف ببطء لاكتشاف السطح
+    </string>
+
+    <string name="choose_image">
+        اختيار صورة
+    </string>
+
+    <string name="lock_artwork">
+        تثبيت
+    </string>
+
+    <string name="unlock_artwork">
+        فتح
+    </string>
+
+    <string name="reset_artwork">
+        إعادة
+    </string>
+
+    <string name="opacity">
+        الشفافية
+    </string>
+
+</resources>
