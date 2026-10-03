@@ -139,7 +139,7 @@ class MainActivity:AppCompatActivity(),GLSurfaceView.Renderer {
         if(engine !is VisualTrackingEngine){
             engine?.close();surface.onPause();sessionRunning=false
             surface.visibility=View.GONE
-            try{engine=VisualTrackingEngine(this,cameraHost){message(it)};rendered?.let{engine?.artwork(it)};syncAppearance()}
+            try{engine=VisualTrackingEngine(this,cameraHost){text->message(text);retryButton.visibility=if(text.startsWith(getString(R.string.visual_error)))View.VISIBLE else View.GONE};rendered?.let{engine?.artwork(it)};syncAppearance()}
             catch(e:Exception){Log.e("TraceAR","Visual initialization failed",e);message(getString(R.string.visual_error)+": "+e.message);return}
         }
         engine?.start()

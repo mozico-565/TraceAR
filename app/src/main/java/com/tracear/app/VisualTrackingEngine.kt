@@ -24,7 +24,7 @@ import kotlin.math.*
 
 @androidx.annotation.OptIn(markerClass = [androidx.camera.view.TransformExperimental::class])
 class VisualTrackingEngine(private val activity:AppCompatActivity,private val host:FrameLayout,private val report:(String)->Unit):TrackingEngine {
-    private val nativeReady=OpenCVLoader.initLocal().also{check(it){"OpenCV initialization failed"}}
+    private val nativeReady=try{OpenCVLoader.initLocal().also{check(it){"OpenCV initialization failed"}}}catch(e:LinkageError){throw IllegalStateException("OpenCV native library unavailable",e)}
     private val executor=Executors.newSingleThreadExecutor()
     private val pending=ConcurrentLinkedQueue<()->Unit>()
     private val tracker=VisualTracker()
@@ -116,7 +116,7 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
         val now=SystemClock.elapsedRealtime();if(!result.lost)lastGood=now
         val points=result.corners?.let{FloatArray(8){i->it[i].toFloat()}.also{matrix.mapPoints(it)}}
         activity.runOnUiThread{
-            if(closed||selecting)return@runOnUiThread
+            if(closed||!active||selecting)return@runOnUiThread
             if(points!=null)overlay.tracked=points
             overlay.available=!result.lost||now-lastGood<350;overlay.invalidate()
             val text=activity.getString(if(result.lost)R.string.visual_lost else if(overlay.locked)R.string.locked else R.string.visual_tracking)+(if(result.lost)"" else " · ${result.confidence}%")
@@ -149,7 +149,7 @@ class VisualTrackingEngine(private val activity:AppCompatActivity,private val ho
             if(planeHeight<=0)planeHeight=1f
             val canonical=floatArrayOf(0f,0f,1f,0f,1f,planeHeight,0f,planeHeight)
             if(!planeMatrix.setPolyToPoly(canonical,0,q,0,4))return
-            val iw=scale;val ih=iw*image.height/image.width
+            val iw=scale*min(1f,planeHeight*image.width/image.height);val ih=iw*image.height/image.width
             val local=Matrix();local.setTranslate(-image.width/2f,-image.height/2f);local.postScale(iw/image.width,ih/image.height);local.postRotate(angle);local.postTranslate(tx,ty*planeHeight)
             val transform=Matrix();transform.setConcat(planeMatrix,local)
             paint.alpha=(opacity*255).toInt();canvas.drawBitmap(image,transform,paint);paint.alpha=255
